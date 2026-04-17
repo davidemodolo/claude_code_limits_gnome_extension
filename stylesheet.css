@@ -1,0 +1,39 @@
+.claude-limits-box {
+    spacing: 4px;
+}
+
+.claude-limits-label {
+    font-weight: bold;
+}
+
+.claude-limits-tooltip {
+    background-color: rgba(0, 0, 0, 0.85);
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    text-align: center;
+}
+
+/* Minimal style – progress bars */
+.claude-limits-bar-track {
+    width: 32px;
+    height: 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.claude-limits-bar-fill {
+    height: 8px;
+    border-radius: 4px;
+    min-width: 2px;
+}
+
+.claude-limits-header .popup-menu-item {
+    font-weight: bold;
+}
+
+.claude-limits-reset {
+    color: #aaaaaa;
+    font-size: 0.85em;
+}

@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.claude-limits"
+          path="/org/gnome/shell/extensions/claude-limits/">
+
+    <!-- General -->
+    <key name="refresh-interval" type="i">
+      <default>300</default>
+      <summary>Refresh interval</summary>
+      <description>How often to refresh usage data, in seconds (60–3600)</description>
+    </key>
+    <key name="panel-position" type="s">
+      <default>'right'</default>
+      <summary>Panel position</summary>
+      <description>Which panel box: "left", "center", or "right"</description>
+    </key>
+    <key name="panel-index" type="i">
+      <default>0</default>
+      <summary>Panel index</summary>
+      <description>Position within the chosen box (0 = leftmost)</description>
+    </key>
+    <key name="panel-style" type="s">
+      <default>'text'</default>
+      <summary>Panel style</summary>
+      <description>"text" for percentages, "minimal" for progress bars</description>
+    </key>
+    <key name="retry-on-resume" type="b">
+      <default>true</default>
+      <summary>Fetch on resume</summary>
+      <description>Auto-fetch when waking from suspend (logind PrepareForSleep)</description>
+    </key>
+
+    <!-- Visibility -->
+    <key name="show-session" type="b">
+      <default>true</default>
+      <summary>Show session limit</summary>
+      <description>Show the 5-hour session limit in panel and menu</description>
+    </key>
+    <key name="show-weekly" type="b">
+      <default>true</default>
+      <summary>Show weekly limit</summary>
+      <description>Show the 7-day weekly limit in panel and menu</description>
+    </key>
+    <key name="show-model-breakdown" type="b">
+      <default>true</default>
+      <summary>Show model breakdown</summary>
+      <description>Show per-model (Opus/Sonnet) rows in the menu</description>
+    </key>
+    <key name="show-tooltip" type="b">
+      <default>true</default>
+      <summary>Show tooltip</summary>
+      <description>Show reset-time tooltip on hover</description>
+    </key>
+    <key name="show-reset-timers" type="b">
+      <default>true</default>
+      <summary>Show reset timers</summary>
+      <description>Show "Resets in …" rows in the menu</description>
+    </key>
+
+    <!-- Notifications -->
+    <key name="notifications-enabled" type="b">
+      <default>false</default>
+      <summary>Notifications enabled</summary>
+      <description>Desktop notification when usage exceeds threshold</description>
+    </key>
+    <key name="notification-threshold" type="i">
+      <default>80</default>
+      <summary>Notification threshold</summary>
+      <description>Usage % that triggers a notification</description>
+    </key>
+    <key name="notification-cooldown" type="i">
+      <default>300</default>
+      <summary>Notification cooldown</summary>
+      <description>Seconds before re-notifying for the same window</description>
+    </key>
+
+    <!-- Text format -->
+    <key name="text-format" type="s">
+      <default>'S:{s}% W:{w}%'</default>
+      <summary>Text format</summary>
+      <description>Pattern for text-mode label. Tokens: {s} session %, {w} weekly %, {sr} session reset, {wr} weekly reset</description>
+    </key>
+
+    <!-- Colors / thresholds -->
+    <key name="bar-colored" type="b">
+      <default>true</default>
+      <summary>Colored indicators</summary>
+      <description>Use threshold colors; otherwise white</description>
+    </key>
+    <key name="threshold-warning" type="i">
+      <default>60</default>
+      <summary>Warning threshold</summary>
+      <description>% where color switches to warning</description>
+    </key>
+    <key name="threshold-critical" type="i">
+      <default>80</default>
+      <summary>Critical threshold</summary>
+      <description>% where color switches to critical</description>
+    </key>
+    <key name="color-normal" type="s">
+      <default>'#55ff55'</default>
+      <summary>Normal color</summary>
+      <description>Color for low usage</description>
+    </key>
+    <key name="color-warning" type="s">
+      <default>'#ffbb33'</default>
+      <summary>Warning color</summary>
+      <description>Color for medium usage</description>
+    </key>
+    <key name="color-critical" type="s">
+      <default>'#ff5555'</default>
+      <summary>Critical color</summary>
+      <description>Color for high usage</description>
+    </key>
+
+    <!-- Bar geometry (minimal mode) -->
+    <key name="bar-width" type="i">
+      <default>32</default>
+      <summary>Bar width</summary>
+      <description>Track width in pixels</description>
+    </key>
+    <key name="bar-height" type="i">
+      <default>8</default>
+      <summary>Bar height</summary>
+      <description>Track height in pixels</description>
+    </key>
+    <key name="bar-radius" type="i">
+      <default>4</default>
+      <summary>Bar radius</summary>
+      <description>Border-radius in pixels</description>
+    </key>
+    <key name="bar-spacing" type="i">
+      <default>4</default>
+      <summary>Bar spacing</summary>
+      <description>Gap between bars in pixels</description>
+    </key>
+    <key name="bar-track-color" type="s">
+      <default>'rgba(255,255,255,0.15)'</default>
+      <summary>Bar track color</summary>
+      <description>Background track color for progress bars</description>
+    </key>
+
+    <!-- Stale indicator -->
+    <key name="stale-opacity" type="d">
+      <default>0.5</default>
+      <summary>Stale opacity</summary>
+      <description>Opacity multiplier when showing cached data (0.0–1.0)</description>
+    </key>
+  </schema>
+</schemalist>
