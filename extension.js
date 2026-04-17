@@ -101,7 +101,7 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
 
         // Everything visual → full rebuild
         const rebuildKeys = [
-            'panel-style', 'show-session', 'show-weekly', 'show-model-breakdown',
+            'panel-style', 'show-session', 'show-weekly',
             'show-reset-timers', 'show-tooltip',
             'bar-colored', 'threshold-warning', 'threshold-critical',
             'color-normal', 'color-warning', 'color-critical',
@@ -214,7 +214,6 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
         const showSession = this._settings.get_boolean('show-session');
         const showWeekly = this._settings.get_boolean('show-weekly');
         const showResets = this._settings.get_boolean('show-reset-timers');
-        const showModels = this._settings.get_boolean('show-model-breakdown');
 
         // Header
         const header = new PopupMenu.PopupMenuItem('Claude Code Usage', {reactive: false});
@@ -248,13 +247,6 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
                 this.menu.addMenuItem(this._weeklyResetItem);
             }
             this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        }
-
-        // Per-model section
-        this._modelSection = null;
-        if (showModels) {
-            this._modelSection = new PopupMenu.PopupMenuSection();
-            this.menu.addMenuItem(this._modelSection);
         }
 
         // Status / last-updated
@@ -598,30 +590,6 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
                 `  Resets in ${_formatTimeUntil(data.seven_day?.resets_at)}`);
         }
 
-        // Per-model breakdown
-        if (this._modelSection) {
-            this._modelSection.removeAll();
-            const models = [
-                ['seven_day_opus', 'Opus (7d)'],
-                ['seven_day_sonnet', 'Sonnet (7d)'],
-            ];
-            let hasModels = false;
-            for (const [key, label] of models) {
-                const m = data[key];
-                if (m && m.utilization != null) {
-                    const pct = Math.round(m.utilization);
-                    const item = new PopupMenu.PopupMenuItem(
-                        `${label}:  ${pct}%`, {reactive: false});
-                    item.label.set_style(`color: ${this._colorForUsage(pct)};`);
-                    this._modelSection.addMenuItem(item);
-                    hasModels = true;
-                }
-            }
-            if (hasModels) {
-                this._modelSection.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-            }
-        }
-
         // Timestamp
         const now = new Date();
         const hh = String(now.getHours()).padStart(2, '0');
@@ -659,7 +627,7 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
         }
 
         const opacity = this._isStale ? `opacity: ${staleOpacity};` : '';
-        const px = Math.max(2, Math.round(barW * pct / 100));
+        const px = pct <= 0 ? 0 : Math.max(2, Math.round(barW * pct / 100));
         const fillRadius = Math.min(r, Math.floor(px / 2));
         track._fill.set_style(
             `width: ${px}px; height: ${h}px; background-color: ${color}; border-radius: ${fillRadius}px; ${opacity}`

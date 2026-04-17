@@ -86,7 +86,6 @@ export default class ClaudeLimitsPreferences extends ExtensionPreferences {
         for (const [key, title, subtitle] of [
             ['show-session', 'Show Session Limit', '5-hour session limit in panel and menu'],
             ['show-weekly', 'Show Weekly Limit', '7-day weekly limit in panel and menu'],
-            ['show-model-breakdown', 'Show Model Breakdown', 'Per-model (Opus/Sonnet) rows in menu'],
             ['show-tooltip', 'Show Tooltip', 'Reset times on hover'],
             ['show-reset-timers', 'Show Reset Timers', '"Resets in\u2026" rows in menu'],
         ]) {

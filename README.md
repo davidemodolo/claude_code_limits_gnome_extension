@@ -7,7 +7,7 @@ A GNOME Shell 46 extension that displays your Claude Code usage limits (session 
 - Displays `S:37% W:26%` in the top bar (session 5h / weekly 7d usage)
 - **Color-coded**: green (<60%), yellow (60-80%), red (>80%)
 - **Hover tooltip** shows "Session resets in Xh Xm / Weekly resets in Xd Xh"
-- **Click** opens a popup menu with full details: per-model breakdown (Opus/Sonnet), reset times, last-updated timestamp, and a manual refresh button
+- **Click** opens a popup menu with full details: reset times, last-updated timestamp, and a manual refresh button
 
 ## Authentication
 

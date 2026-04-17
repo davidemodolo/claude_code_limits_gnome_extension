@@ -41,11 +41,6 @@
       <summary>Show weekly limit</summary>
       <description>Show the 7-day weekly limit in panel and menu</description>
     </key>
-    <key name="show-model-breakdown" type="b">
-      <default>true</default>
-      <summary>Show model breakdown</summary>
-      <description>Show per-model (Opus/Sonnet) rows in the menu</description>
-    </key>
     <key name="show-tooltip" type="b">
       <default>true</default>
       <summary>Show tooltip</summary>
