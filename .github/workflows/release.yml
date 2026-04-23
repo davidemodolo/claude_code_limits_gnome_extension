@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y libglib2.0-bin
+
+      - name: Pack extension
+        run: make pack
+
+      - name: Get version from tag
+        id: version
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Claude Code Limits ${{ steps.version.outputs.tag }}"
+          body: |
+            ## Installation
+
+            1. Download `claude-limits@davide.modolo.zip` below.
+            2. Open GNOME Extensions app → Install from file → select the zip.
+               **Or** via terminal:
+               ```bash
+               gnome-extensions install claude-limits@davide.modolo.zip
+               gnome-extensions enable claude-limits@davide.modolo
+               ```
+            3. On Wayland: log out and back in. On X11: Alt+F2 → `r`.
+          files: "*.zip"
+          draft: false
+          prerelease: false

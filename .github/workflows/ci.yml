@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get install -y libglib2.0-bin
+
+      - name: Compile schemas
+        run: make build
+
+      - name: Validate metadata.json
+        run: |
+          python3 -c "
+          import json, sys
+          with open('metadata.json') as f:
+            m = json.load(f)
+          required = ['uuid', 'name', 'description', 'shell-version', 'version']
+          missing = [k for k in required if k not in m]
+          if missing:
+            print('Missing keys:', missing); sys.exit(1)
+          print('metadata.json OK — uuid:', m['uuid'], 'version:', m['version'])
+          "
+
+      - name: Pack extension
+        run: make pack
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-zip
+          path: "*.zip"

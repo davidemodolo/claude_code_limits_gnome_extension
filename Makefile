@@ -6,6 +6,9 @@ INSTALL_DIR = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
 build:
 	glib-compile-schemas schemas/
 
+pack: build
+	zip -r $(UUID).zip metadata.json extension.js prefs.js stylesheet.css schemas/
+
 install: build
 	mkdir -p $(INSTALL_DIR)/schemas
 	cp metadata.json extension.js prefs.js stylesheet.css $(INSTALL_DIR)/
