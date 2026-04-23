@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Install dependencies
         run: sudo apt-get install -y libglib2.0-bin
@@ -39,3 +41,37 @@ jobs:
         with:
           name: extension-zip
           path: "*.zip"
+
+  auto-tag:
+    runs-on: ubuntu-latest
+    # Only tag on direct pushes to main, not on PRs
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check if version changed
+        id: version_check
+        run: |
+          CURRENT=$(python3 -c "import json; print(json.load(open('metadata.json'))['version'])")
+          PREVIOUS=$(git show HEAD~1:metadata.json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "0")
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "previous=$PREVIOUS" >> "$GITHUB_OUTPUT"
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag v${{ steps.version_check.outputs.current }}
+        if: steps.version_check.outputs.changed == 'true'
+        run: |
+          TAG="v${{ steps.version_check.outputs.current }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"

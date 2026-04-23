@@ -3,7 +3,7 @@
     "name": "Claude Code Limits",
     "description": "Shows Claude Code session (5h) and weekly (7d) usage limits in the GNOME top bar with color-coded percentages and reset timers",
     "shell-version": ["46", "47"],
-    "version": 1,
+    "version": 1.1,
     "settings-schema": "org.gnome.shell.extensions.claude-limits",
     "url": ""
 }
