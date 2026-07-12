@@ -16,6 +16,15 @@ const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const TOKEN_URL = 'https://platform.claude.com/v1/oauth/token';
 const OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 
+function _formatAgo(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+}
+
 function _formatTimeUntil(isoString) {
     if (!isoString) return 'unknown';
     const now = Date.now();
@@ -44,11 +53,23 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
 
         this._ext = ext;
         this._settings = ext.getSettings();
-        this._session = new Soup.Session();
+        this._session = new Soup.Session({timeout: 30});
         this._cancellable = new Gio.Cancellable();
         this._usageData = null;
         this._lastGoodData = null;
+        this._lastGoodDataTime = null;
         this._isStale = false;
+        this._lastError = '';
+        this._isFetching = false;
+        this._fetchStartedAt = 0;
+        this._retryCount = 0;
+        this._retryTimerId = null;
+        this._resumeTimerId = null;
+        this._networkMonitor = null;
+        this._networkSignalId = null;
+        this._cacheMonitor = null;
+        this._cacheMonitorId = null;
+        this._cacheDebounceId = null;
         this._timerId = null;
         this._tooltip = null;
         this._tooltipTimeoutId = null;
@@ -64,6 +85,8 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
         this._connectHover();
         this._connectSettings();
         this._setupSleepMonitor();
+        this._setupNetworkMonitor();
+        this._setupCacheMonitor();
 
         // Hide tooltip when menu opens
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
@@ -258,7 +281,7 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
 
         // Refresh action
         const refreshItem = new PopupMenu.PopupMenuItem('\u21bb  Refresh');
-        refreshItem.connect('activate', () => this._fetchUsage());
+        refreshItem.connect('activate', () => this._fetchUsage(true));
         this.menu.addMenuItem(refreshItem);
     }
 
@@ -300,7 +323,7 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
                 style_class: 'dash-label claude-limits-tooltip',
                 text,
             });
-            Main.layoutManager.addTopChrome(this._tooltip);
+            (Main.layoutManager.addChrome ?? Main.layoutManager.addTopChrome).call(Main.layoutManager, this._tooltip);
         } else {
             this._tooltip.set_text(text);
         }
@@ -338,12 +361,104 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
             this._sleepSignalId = this._loginProxy.connectSignal(
                 'PrepareForSleep',
                 (_proxy, _sender, [going]) => {
-                    if (!going) this._fetchUsage();
+                    if (going) return;
+                    // Give the network a moment to come back up after resume
+                    if (this._resumeTimerId) GLib.Source.remove(this._resumeTimerId);
+                    this._resumeTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 3, () => {
+                        this._resumeTimerId = null;
+                        this._fetchUsage();
+                        return GLib.SOURCE_REMOVE;
+                    });
                 },
             );
         } catch (e) {
             console.error('[Claude Limits] sleep monitor:', e.message);
         }
+    }
+
+    _setupNetworkMonitor() {
+        this._networkMonitor = Gio.NetworkMonitor.get_default();
+        this._networkSignalId = this._networkMonitor.connect(
+            'network-changed', (_monitor, available) => {
+                if (available && (this._isStale || !this._lastGoodData))
+                    this._fetchUsage();
+            });
+    }
+
+    // ── Local statusline cache ────────────────────────────────────
+    // A Claude Code statusline script mirrors the rate-limit data it
+    // receives to ~/.claude/usage-cache.json after every API response.
+    // Watching that file gives live values during active sessions
+    // without spending the usage endpoint's request quota.
+
+    _cachePath() {
+        return GLib.build_filenamev([GLib.get_home_dir(), '.claude', 'usage-cache.json']);
+    }
+
+    _setupCacheMonitor() {
+        try {
+            const file = Gio.File.new_for_path(this._cachePath());
+            this._cacheMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
+            this._cacheMonitorId = this._cacheMonitor.connect('changed', (_m, _f, _o, event) => {
+                if (event !== Gio.FileMonitorEvent.CHANGES_DONE_HINT &&
+                    event !== Gio.FileMonitorEvent.CREATED)
+                    return;
+                if (this._cacheDebounceId) GLib.Source.remove(this._cacheDebounceId);
+                this._cacheDebounceId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+                    this._cacheDebounceId = null;
+                    this._readCache();
+                    return GLib.SOURCE_REMOVE;
+                });
+            });
+        } catch (e) {
+            console.error('[Claude Limits] cache monitor:', e.message);
+        }
+        this._readCache();
+    }
+
+    _readCache() {
+        try {
+            const [ok, raw] = GLib.file_get_contents(this._cachePath());
+            if (!ok) return;
+            const cache = JSON.parse(new TextDecoder().decode(raw));
+            const data = this._normalizeRateLimits(cache.rate_limits ?? {});
+            if (!data) return;
+            const cachedAt = Math.round((cache.cached_at ?? 0) * 1000);
+            // Ignore leftovers from an old session, and never go
+            // backwards relative to data we already have
+            if (!cachedAt || Date.now() - cachedAt > 300000) return;
+            if (this._lastGoodDataTime && cachedAt <= this._lastGoodDataTime) return;
+            this._usageData = data;
+            this._lastGoodData = data;
+            this._lastGoodDataTime = cachedAt;
+            this._isStale = false;
+            this._lastError = '';
+            this._updateUI(data);
+            this._checkNotifications(data);
+        } catch (_e) {
+            // Missing or half-written file — the next change event retries
+        }
+    }
+
+    // Statusline JSON uses used_percentage + epoch seconds; the usage
+    // API uses utilization + ISO timestamps. Normalize to the API shape.
+    _normalizeRateLimits(rl) {
+        const conv = w => {
+            if (!w) return null;
+            const pct = w.used_percentage ?? w.utilization;
+            if (pct === undefined || pct === null) return null;
+            let resets = w.resets_at ?? null;
+            if (typeof resets === 'number')
+                resets = new Date(resets * 1000).toISOString();
+            return {utilization: pct, resets_at: resets};
+        };
+        const five = conv(rl.five_hour);
+        const seven = conv(rl.seven_day);
+        if (!five && !seven) return null;
+        const data = {};
+        if (five) data.five_hour = five;
+        if (seven) data.seven_day = seven;
+        return data;
     }
 
     _teardownSleepMonitor() {
@@ -444,7 +559,17 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
 
     // ── Fetch usage ───────────────────────────────────────────────
 
-    _fetchUsage() {
+    _fetchUsage(force = false) {
+        // Failsafe: never let a wedged request block polling forever
+        if (!force && this._isFetching &&
+            Date.now() - this._fetchStartedAt < 90000)
+            return;
+
+        if (this._retryTimerId) {
+            GLib.Source.remove(this._retryTimerId);
+            this._retryTimerId = null;
+        }
+
         const creds = this._loadCredentials();
         if (!creds) {
             this._setError('Not logged in \u2014 run `claude` first');
@@ -452,13 +577,37 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
         }
         // If the token looks expired, refresh before fetching
         if (creds.expiresAt && Date.now() >= creds.expiresAt) {
+            this._isFetching = true;
+            this._fetchStartedAt = Date.now();
             this._refreshToken(creds, newCreds => {
-                if (newCreds) this._doFetch(newCreds.accessToken, true);
-                else this._setError('Token refresh failed');
+                if (newCreds) {
+                    this._doFetch(newCreds.accessToken, false);
+                } else {
+                    this._isFetching = false;
+                    this._setError('Token refresh failed');
+                    this._scheduleRetry();
+                }
             });
             return;
         }
+        this._isFetching = true;
+        this._fetchStartedAt = Date.now();
         this._doFetch(creds.accessToken, false);
+    }
+
+    // Retry soon after a failed fetch (10s, 30s, 90s) instead of waiting
+    // out the full refresh interval. Kept gentle: the usage endpoint only
+    // allows ~7 requests per 5 minutes. minDelay lets rate-limit
+    // responses push the retry further out (Retry-After).
+    _scheduleRetry(minDelay = 0) {
+        if (this._retryTimerId || this._retryCount >= 3) return;
+        const delay = Math.max(10 * Math.pow(3, this._retryCount), minDelay);
+        this._retryCount++;
+        this._retryTimerId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
+            this._retryTimerId = null;
+            this._fetchUsage();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _doFetch(accessToken, isRetry) {
@@ -476,27 +625,49 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
                     const creds = this._loadCredentials();
                     if (creds) {
                         this._refreshToken(creds, newCreds => {
-                            if (newCreds) this._doFetch(newCreds.accessToken, true);
-                            else this._setError('Auth expired');
+                            if (newCreds) {
+                                this._doFetch(newCreds.accessToken, true);
+                            } else {
+                                this._isFetching = false;
+                                this._setError('Auth expired');
+                                this._scheduleRetry();
+                            }
                         });
                         return;
                     }
                 }
 
+                this._isFetching = false;
+
+                if (status === 429) {
+                    const retryAfter = parseInt(
+                        msg.get_response_headers().get_one('Retry-After') ?? '', 10) || 0;
+                    this._setError('Rate limited');
+                    this._scheduleRetry(Math.max(retryAfter, 30));
+                    return;
+                }
+
                 if (status !== 200) {
                     this._setError(`HTTP ${status}`);
+                    this._scheduleRetry();
                     return;
                 }
 
                 const data = JSON.parse(new TextDecoder().decode(bytes.get_data()));
                 this._usageData = data;
                 this._lastGoodData = data;
+                this._lastGoodDataTime = Date.now();
                 this._isStale = false;
+                this._lastError = '';
+                this._retryCount = 0;
                 this._updateUI(data);
                 this._checkNotifications(data);
             } catch (e) {
-                if (!this._cancellable.is_cancelled())
+                this._isFetching = false;
+                if (!this._cancellable.is_cancelled()) {
                     this._setError('Fetch error');
+                    this._scheduleRetry();
+                }
             }
         });
     }
@@ -591,10 +762,16 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
         }
 
         // Timestamp
-        const now = new Date();
-        const hh = String(now.getHours()).padStart(2, '0');
-        const mm = String(now.getMinutes()).padStart(2, '0');
-        this._statusItem.label.set_text(`Updated ${hh}:${mm}`);
+        if (this._isStale && this._lastGoodDataTime !== null) {
+            this._statusItem.label.set_text(
+                `${this._lastError} · cached ${_formatAgo(Date.now() - this._lastGoodDataTime)} ago`
+            );
+        } else {
+            const t = new Date(this._lastGoodDataTime ?? Date.now());
+            const hh = String(t.getHours()).padStart(2, '0');
+            const mm = String(t.getMinutes()).padStart(2, '0');
+            this._statusItem.label.set_text(`Updated ${hh}:${mm}`);
+        }
     }
 
     _formatPanelText(data) {
@@ -635,11 +812,17 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
     }
 
     _setError(msg) {
+        if (msg !== this._lastError)
+            console.warn('[Claude Limits] fetch failed:', msg);
         if (this._lastGoodData) {
-            this._isStale = true;
+            // Only flag data as stale once it is meaningfully old —
+            // a single failed poll doesn't make a fresh cache wrong
+            const grace = Math.max(
+                this._settings.get_int('refresh-interval') * 3, 120) * 1000;
+            this._isStale = Date.now() - this._lastGoodDataTime > grace;
+            this._lastError = msg;
             this._usageData = this._lastGoodData;
             this._updateUI(this._lastGoodData);
-            this._statusItem.label.set_text(`${msg} (showing cached)`);
         } else {
             // No cached data at all
             if (this._panelStyle === 'minimal') {
@@ -667,6 +850,30 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
             GLib.Source.remove(this._tooltipTimeoutId);
             this._tooltipTimeoutId = null;
         }
+        if (this._retryTimerId) {
+            GLib.Source.remove(this._retryTimerId);
+            this._retryTimerId = null;
+        }
+        if (this._resumeTimerId) {
+            GLib.Source.remove(this._resumeTimerId);
+            this._resumeTimerId = null;
+        }
+        if (this._networkSignalId && this._networkMonitor) {
+            this._networkMonitor.disconnect(this._networkSignalId);
+            this._networkSignalId = null;
+            this._networkMonitor = null;
+        }
+        if (this._cacheDebounceId) {
+            GLib.Source.remove(this._cacheDebounceId);
+            this._cacheDebounceId = null;
+        }
+        if (this._cacheMonitor) {
+            if (this._cacheMonitorId)
+                this._cacheMonitor.disconnect(this._cacheMonitorId);
+            this._cacheMonitor.cancel();
+            this._cacheMonitor = null;
+            this._cacheMonitorId = null;
+        }
         for (const id of this._signalIds) {
             this._settings.disconnect(id);
         }
@@ -674,7 +881,7 @@ class ClaudeLimitsIndicator extends PanelMenu.Button {
         this._teardownSleepMonitor();
         this._cancellable.cancel();
         if (this._tooltip) {
-            Main.layoutManager.removeTopChrome(this._tooltip);
+            (Main.layoutManager.removeChrome ?? Main.layoutManager.removeTopChrome).call(Main.layoutManager, this._tooltip);
             this._tooltip.destroy();
             this._tooltip = null;
         }

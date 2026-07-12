@@ -7,7 +7,7 @@
     <key name="refresh-interval" type="i">
       <default>300</default>
       <summary>Refresh interval</summary>
-      <description>How often to refresh usage data, in seconds (60–3600)</description>
+      <description>How often to refresh usage data, in seconds (60-3600); lower values get rate-limited by the API (~7 requests per 5 minutes allowed)</description>
     </key>
     <key name="panel-position" type="s">
       <default>'right'</default>
@@ -139,7 +139,7 @@
     <key name="stale-opacity" type="d">
       <default>0.5</default>
       <summary>Stale opacity</summary>
-      <description>Opacity multiplier when showing cached data (0.0–1.0)</description>
+      <description>Opacity multiplier when showing cached data (0.0-1.0)</description>
     </key>
   </schema>
 </schemalist>

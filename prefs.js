@@ -27,7 +27,7 @@ export default class ClaudeLimitsPreferences extends ExtensionPreferences {
 
         const refreshRow = new Adw.SpinRow({
             title: 'Refresh Interval',
-            subtitle: 'How often to check usage (seconds)',
+            subtitle: 'How often to check usage (seconds) — below 60s the API rate-limits requests',
             adjustment: new Gtk.Adjustment({
                 lower: 60, upper: 3600,
                 step_increment: 30, page_increment: 300,
